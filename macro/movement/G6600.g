@@ -31,11 +31,11 @@ var workOffset = { (exists(param.W)) ? param.W : move.workplaceNumber }
 
 ; Define names for work offsets. The work offset ID is the index into these arrays.
 ; None means do not set origins on a work offset.
-var workOffsetCodes={"G54","G55","G56","G57","G58","G59","G59.1","G59.2","G59.3", "Cancel"}
+var workOffsetCodes={"G54","G55","G56","G57","G58","G59","G59.1","G59.2","G59.3"}
 
 
 ; Define probe cycle names
-var probeCycleNames = { "Vise Corner (X,Y,Z)", "Circular Bore (X,Y)", "Circular Boss (X,Y)", "Rectangle Pocket (X,Y)", "Rectangle Block (X,Y)", "Outside Corner (X,Y)", "Single Surface (X/Y/Z)", "Cancel" }
+var probeCycleNames = { "Vise Corner (X,Y,Z)", "Circular Bore (X,Y)", "Circular Boss (X,Y)", "Rectangle Pocket (X,Y)", "Rectangle Block (X,Y)", "Web (X/Y)", "Pocket (X/Y)", "Outside Corner (X,Y)", "Single Surface (X/Y/Z)" }
 
 if { global.mosTM && !global.mosDD[0] }
     M291 P{"Before executing cutting operations, it is necessary to identify where the workpiece for a part is. We will do this by probing and setting a work co-ordinate system (WCS) origin point."} R"MillenniumOS: Probe Workpiece" T0 S2
@@ -65,8 +65,8 @@ if { global.mosTM && !global.mosDD[0] }
 ; a W parameter was not passed.
 
 if { var.workOffset == null }
-    M291 P{"Select the WCS to probe. The current WCS is selected by default."} R"MillenniumOS: Probe Workpiece" T0 S4 K{var.workOffsetCodes} F{move.workplaceNumber}
-    if { result != 0 || input == #var.workOffsetCodes-1 }
+    M291 P{"Select the WCS to probe. The current WCS is selected by default."} R"MillenniumOS: Probe Workpiece" J2 T0 S4 K{var.workOffsetCodes} F{move.workplaceNumber}
+    if { result != 0 }
         abort {"Operator cancelled probe cycle, please set WCS origin manually or restart probing with <b>G6600</b>!"}
         M99
 
@@ -89,29 +89,39 @@ if { global.mosTM }
         M291 P{"WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetName ^ ") has origin:<br/>X=" ^ var.pdX ^ " Y=" ^ var.pdY ^ " Z=" ^ var.pdZ} R"MillenniumOS: Probe Workpiece" T0 S2
     else
         ; Otherwise, tell the operator which WCS origin will be set.
-        M291 P{"Probing will set the origin of WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetCodes[var.workOffset] ^ ") to the probed location."} R"MillenniumOS: Probe Workpiece" T0 S4 K{"Continue","Cancel"}
-        if { input != 0 }
+        M291 P{"Probing will set the origin of WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetCodes[var.workOffset] ^ ") to the probed location."} R"MillenniumOS: Probe Workpiece" T0 S3 J2
+        if { result != 0 }
             abort {"Operator cancelled probe cycle, please set WCS origin manually or restart probing with <b>G6600</b>!"}
 
 ; If work offset origin is already set
 if { var.pdX != 0 && var.pdY != 0 && var.pdZ != 0 }
     ; Allow operator to continue without resetting the origin and abort the probe
-    M291 P{"WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetName ^ ") already has a valid origin.<br/>Click <b>Continue</b> to use the existing origin or <b>Re-Probe</b> to modify it."} R"MillenniumOS: Probe Workpiece" T0 S4 K{"Continue","Re-Probe"} F0
+    M291 P{"WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetName ^ ") is valid. <br/><b>Continue</b> to proceed, <b>Modify</b> to update or <b>Reset</b> to start again."} R"MillenniumOS: Probe Workpiece" T0 S4 K{"Continue","Modify", "Reset"} F0
     if { input == 0 }
         echo {"MillenniumOS: WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetName ^ ") origin retained, skipping probe cycle."}
         M99
+    elif { input == 2 }
+        echo {"MillenniumOS: WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetName ^ ") origin has been reset."}
+        ; Reset the WCS origin so that all axes must be re-probed.
+        G10 L2 P{var.wcsNumber} X0 Y0 Z0
 
-    ; Reset the WCS origin so that all axes must be re-probed.
-    G10 L2 P{var.wcsNumber} X0 Y0 Z0
+        ; Clear all stored WCS details
+        M5010 W{var.workOffset}
 
 ; Switch to touchprobe if not already connected
 if { global.mosPTID != state.currentTool }
     T T{global.mosPTID}
 
 ; Prompt the user to pick a probing operation.
-M291 P"Please select a probe cycle type." R"MillenniumOS: Probe Workpiece" T0 S4 F0 K{var.probeCycleNames}
+M291 P"Please select a probe cycle type." R"MillenniumOS: Probe Workpiece" J2 T0 S4 F0 K{var.probeCycleNames}
 if { result != 0 }
-    abort { "Operator cancelled probe cycle!" }
+    abort {"Operator cancelled probe cycle, please set WCS origin manually or restart probing with <b>G6600</b>!"}
+
+; Cancel rotation compensation as we use G53 on the probe moves.
+G69
+
+; Reset the current probe status counts
+M5012
 
 ; Run the selected probing operation.
 ; We cannot lookup G command numbers to run dynamically so these must be
@@ -130,12 +140,14 @@ elif { input == 3 } ; Rectangle Pocket
     G6502 W{var.workOffset}
 elif { input == 4 } ; Rectangle Block
     G6503 W{var.workOffset}
-elif { input == 5 } ; Outside Corner
+elif { input == 5 } ; Web X/Y
+    G6504 W{var.workOffset}
+elif { input == 6 } ; Pocket X/Y
+    G6505 W{var.workOffset}
+elif { input == 7 } ; Outside Corner
     G6508 W{var.workOffset}
-elif { input == 6 } ; Single Surface
+elif { input == 8 } ; Single Surface
     G6510 W{var.workOffset}
-elif { input == 7 } ; Cancel
-    abort {"Operator cancelled probe cycle, please set WCS origin manually or restart probing with <b>G6600</b>!"}
 else
     abort { "Invalid probe operation " ^ input ^ " selected!" }
 
@@ -157,9 +169,9 @@ if { var.workOffset != null }
             M99
 
     else
-        M291 P{"WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetCodes[var.workOffset] ^ ") origin is valid.<br/>Click <b>Continue</b> to proceed or <b>Re-Probe</b> to try again."} R"MillenniumOS: Probe Workpiece" T0 S4 K{"Continue", "Re-Probe", "Cancel"}
-        if { input == 2 }
-            abort { "Operator cancelled probe cycle!" }
+        M291 P{"WCS " ^ var.wcsNumber ^ " (" ^ var.workOffsetCodes[var.workOffset] ^ ") origin is valid.<br/>Click <b>Continue</b> to proceed or <b>Re-Probe</b> to try again."} R"MillenniumOS: Probe Workpiece" T0 J2 S4 K{"Continue", "Re-Probe"}
+        if { result != 0 }
+            abort {"Operator cancelled probe cycle, please set WCS origin manually or restart probing with <b>G6600</b>!"}
         elif { input == 1 }
             ; This is a recursive call. Let the user break it :)
             G6600 W{var.workOffset}

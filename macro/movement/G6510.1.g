@@ -20,6 +20,10 @@ if { !exists(param.H) }
 if { !exists(param.I) }
     abort { "Must provide a distance to probe towards the target surface (I...)" }
 
+; Increment the probe surface and point totals for status reporting
+set global.mosPRST = { global.mosPRST + 1 }
+set global.mosPRPT = { global.mosPRPT + 1 }
+
 ; Default workOffset to the current workplace number if not specified
 ; with the W parameter.
 var workOffset = { (exists(param.W) && param.W != null) ? param.W : move.workplaceNumber }
@@ -29,15 +33,15 @@ var workOffset = { (exists(param.W) && param.W != null) ? param.W : move.workpla
 ; the number of the work co-ordinate system, so is 1-indexed.
 var wcsNumber = { var.workOffset + 1 }
 
-var probeId = { global.mosFeatTouchProbe ? global.mosTPID : null }
+var pID = { global.mosFeatTouchProbe ? global.mosTPID : null }
 
 ; Make sure probe tool is selected
 if { global.mosPTID != state.currentTool }
-    T T{global.mosPTID}
+    abort { "Must run T" ^ global.mosPTID ^ " to select the probe tool before probing!" }
 
 ; Reset stored values that we're going to overwrite -
-; surface
-M5010 W{var.workOffset} R8
+; surface and rotation
+M5010 W{var.workOffset} R40
 
 ; Get current machine position on Z
 M5000 P1 I2
@@ -76,7 +80,7 @@ else
 M6515 X{ var.tPX } Y{ var.tPY } Z{ var.tPZ }
 
 ; Run probing operation
-G6512 I{var.probeId} J{param.J} K{param.K} L{param.L} X{var.tPX} Y{var.tPY} Z{var.tPZ}
+G6512 I{var.pID} J{param.J} K{param.K} L{param.L} X{var.tPX} Y{var.tPY} Z{var.tPZ}
 
 var sAxis = { (var.probeAxis <= 1)? "X" : (var.probeAxis <= 3)? "Y" : "Z" }
 
@@ -89,9 +93,9 @@ set global.mosWPSfcPos[var.workOffset] = { (var.probeAxis <= 1)? global.mosMI[0]
 ; Report probe results if requested
 if { !exists(param.R) || param.R != 0 }
     M7601 W{var.workOffset}
+    echo { "MillenniumOS: Setting WCS " ^ var.wcsNumber ^ " " ^ var.sAxis ^ " origin to probed co-ordinate." }
 
 ; Set WCS if required
-echo { "MillenniumOS: Setting WCS " ^ var.wcsNumber ^ " " ^ var.sAxis ^ " origin to probed co-ordinate." }
 if { var.probeAxis <= 1 }
     G10 L2 P{var.wcsNumber} X{global.mosWPSfcPos[var.workOffset]}
 elif { var.probeAxis <= 3 }

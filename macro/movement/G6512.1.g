@@ -17,6 +17,9 @@ if { !exists(param.I) || param.I == null || sensors.probes[param.I].type < 5 || 
 if { !exists(param.X) && !exists(param.Y) && !exists(param.Z) }
     abort { "G6512.1: Must provide a valid target position in one or more axes (X.. Y.. Z..)!" }
 
+if { !exists(global.mosMI) }
+    global mosMI = { null }
+
 ; Allow the number of retries to be overridden
 var retries = { (exists(param.R) && param.R != null) ? param.R : (sensors.probes[param.I].maxProbeCount + 1) }
 
@@ -28,6 +31,14 @@ var errors = { !exists(param.E) || param.E != 0 }
 G90
 G21
 G94
+
+; Cancel rotation compensation as we use G53 on the probe move.
+; Leaving rotation compensation active causes us to fail position
+; checks.
+G69
+
+set global.mosPRRT = { var.retries }
+set global.mosPRRS = 0
 
 ; Get current machine position
 M5000 P0
@@ -49,6 +60,7 @@ M6515 X{ var.tP[0] } Y{ var.tP[1] } Z{ var.tP[2] }
 ; to restore the probe speed after completing each probe.
 var roughSpeed   = { sensors.probes[param.I].speeds[0] }
 var fineSpeed    = { sensors.probes[param.I].speeds[1] }
+var curSpeed     = { var.roughSpeed }
 
 var roughDivider = 5
 
@@ -57,9 +69,6 @@ if { var.roughSpeed == var.fineSpeed }
     if { !global.mosEM }
         echo { "MillenniumOS: Probe " ^ param.I ^ " is configured with a single feed rate, which will be used for the initial probe. Subsequent probes will run at " ^ var.fineSpeed ^ "mm/min." }
         echo { "MillenniumOS: Please use M558 K" ^ param.I ^ " F" ^ var.roughSpeed ^ ":" ^ var.fineSpeed ^ " in your config to silence this warning." }
-
-; Set rough probe speed
-M558 K{ param.I } F{ var.roughSpeed }
 
 ; These variables are used within the probing loop to calculate
 ; average positions and variances of the probed points.
@@ -87,11 +96,9 @@ while { iterations <= var.retries }
     ; activated at one probe point.
 
     if { var.errors }
-        G53 G38.2 K{ param.I } X{ var.tP[0] } Y{ var.tP[1] } Z{ var.tP[2] }
+        G53 G38.2 K{ param.I } F{ var.curSpeed } X{ var.tP[0] } Y{ var.tP[1] } Z{ var.tP[2] }
         ; Abort if an error was encountered
         if { result != 0 }
-            ; Reset probing speed limits
-            M558 K{ param.I } F{ var.roughSpeed, var.fineSpeed }
 
             ; Park at Z max.
             ; This is a safety precaution to prevent subsequent X/Y moves from
@@ -101,7 +108,7 @@ while { iterations <= var.retries }
             abort { "G6512.1: Probe " ^ param.I ^ " experienced an error, aborting!" }
     else
         ; Disable errors by using G38.3
-        G53 G38.3 K{ param.I } X{ var.tP[0] } Y{ var.tP[1] } Z{ var.tP[2] }
+        G53 G38.3 K{ param.I } F{ var.curSpeed } X{ var.tP[0] } Y{ var.tP[1] } Z{ var.tP[2] }
 
     ; Get current machine position
     M5000 P0
@@ -144,7 +151,7 @@ while { iterations <= var.retries }
             set var.pV[2] = { var.nS[2] / (iterations-1) }
 
     ; Drop to fine probing speed
-    M558 K{ param.I } F{ var.fineSpeed }
+    set var.curSpeed = { var.fineSpeed }
 
     ; If we have not moved from the starting position, do not back off.
     ; bN will return NaN if the start and current positions are the same
@@ -192,6 +199,8 @@ while { iterations <= var.retries }
     if { var.tP[2] != var.sP[2] }
         set var.tR = { var.tR && ((var.pV[2] <= sensors.probes[param.I].tolerance && iterations > 2) || (!var.errors && abs(var.cP[2] - var.tP[2]) <= sensors.probes[param.I].tolerance)) }
 
+    set global.mosPRRS = { iterations + 1 }
+
     ; If we're within tolerance on all axes, we can stop probing
     ; and report the result.
     if { var.tR }
@@ -200,9 +209,6 @@ while { iterations <= var.retries }
     ; Dwell so machine can settle, if necessary
     if { sensors.probes[param.I].recoveryTime > 0.0 }
         G4 P{ ceil(sensors.probes[param.I].recoveryTime * 1000) }
-
-; Reset probing speed limits
-M558 K{ param.I } F{ var.roughSpeed, var.fineSpeed }
 
 if { !exists(global.mosMI) }
     global mosMI = { null }

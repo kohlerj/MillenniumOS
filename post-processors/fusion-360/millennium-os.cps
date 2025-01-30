@@ -300,6 +300,7 @@ var M = {
   VSSC_ENABLE: 7000,
   VSSC_DISABLE: 7001,
   SPINDLE_ON_CW: 3.9,
+  SPINDLE_ON_CCW: 4.9,
   SPINDLE_OFF: 5.9,
   CALL_MACRO: 98,
   COOLANT_MIST: 7,
@@ -465,6 +466,9 @@ function onOpen() {
     writeComment("Pass tool details to firmware");
     for(var i = 0; i < nTools; i++) {
       var tool = tools.getTool(i);
+      if(tool.description.length < 1) {
+        error("Tool description must not be empty!");
+      }
       writeBlock('{cmd} P{index} R{radius} S"{desc}"'.supplant({
         cmd: mCodes.format(M.ADD_TOOL),
         index: intFmt.format(tool.number),
@@ -537,6 +541,7 @@ var curTool = {
   number: -1,
   desc: "unknown",
   rpm: 0,
+  run_cmd: M.SPINDLE_OFF, // Default to not turning on the spindle
   flutes: 0,
   type: -1,
   length: 0,
@@ -589,17 +594,8 @@ function onParameter(param, value) {
     case 'operation:tool_spindleSpeed':
       curTool['rpm'] = value;
     break;
-
-    // Generate errors on unsupported parameter values
     case 'operation:tool_clockwise':
-      if(value !== 1) {
-        error("Anti-clockwise spindle rotation is not supported by MillenniumOS!");
-      }
-    break;
-    case 'operation:isMultiAxisStrategy':
-      if(value === 1) {
-        error("Multi-axis strategies are not supported by MillenniumOS!");
-      }
+      curTool['run_cmd'] = (value === 1) ? M.SPINDLE_ON_CW : M.SPINDLE_ON_CCW;
     break;
 
     // Track feed height and clearance height
@@ -683,27 +679,29 @@ function onSection() {
     writeln("");
   }
 
-  if(getProperty("vsscEnabled")) {
-    writeComment("Enable Variable Spindle Speed Control");
-    writeBlock(mCodes.format(M.VSSC_ENABLE), "P{period} V{variance}".supplant({
-      period: getProperty("vsscPeriod"),
-      variance: getProperty("vsscVariance")
-    }));
-    writeln("");
-  }
-
-  // If RPM has changed, output updated M3 command
-  // We do this regardless of tool-change, because
-  // operations may have different RPMs set on the
-  // same tool.
   var s = sVar.format(curTool['rpm']);
-  if(s && curTool['type'] !== TOOL_PROBE) {
+
+  // Only output VSSC and spindle commands if spindle speed
+  // is set, and has changed.
+  if(s !== "" && curTool['type'] !== TOOL_PROBE && curTool['rpm'] > 0) {
+    if(getProperty("vsscEnabled")) {
+      writeComment("Enable Variable Spindle Speed Control");
+      writeBlock(mCodes.format(M.VSSC_ENABLE), "P{period} V{variance}".supplant({
+        period: getProperty("vsscPeriod"),
+        variance: getProperty("vsscVariance")
+      }));
+      writeln("");
+    }
+
+    // If RPM has changed, output updated M3 command
+    // We do this regardless of tool-change, because
+    // operations may have different RPMs set on the
+    // same tool.
     writeComment("Start spindle at requested RPM and wait for it to accelerate");
 
     // We must use mFmt directly rather than mCodes here
     // because modal groups do not correctly handle
     // decimals.
-
     writeBlock(mFmt.format(M.SPINDLE_ON_CW), s);
     writeln("");
 
@@ -719,7 +717,6 @@ function onSection() {
       writeBlock(mFmt.format(coolant));
       writeln("");
     }
-
   }
 
   // Output operation details after WCS and tool changing.
@@ -869,8 +866,10 @@ function onCyclePoint(x, y, z) {
 // Called when a spindle speed change is requested
 function onSpindleSpeed(rpm) {
   writeln("")
-  writeComment("Spindle speed changed");
-  writeBlock(mFmt.format(M.SPINDLE_ON_CW), sVar.format(rpm));
+  if(rpm > 0) {
+    writeComment("Spindle speed changed");
+    writeBlock(mFmt.format(M.SPINDLE_ON_CW), sVar.format(rpm));
+  }
 }
 
 // Called when a rapid linear move is requested

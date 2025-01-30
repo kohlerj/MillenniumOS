@@ -13,13 +13,18 @@ if { !inputs[state.thisInput].active }
 if { !exists(param.X) && !exists(param.Y) && !exists(param.Z) }
     abort { "G6512: Must provide a valid target position in one or more axes (X.. Y.. Z..)!" }
 
+if { !exists(global.mosMI) }
+    global mosMI = { null }
+
 ; Use absolute positions in mm and feeds in mm/min
 G90
 G21
 G94
 
-; Make sure machine is stationary before checking machine positions
-M400
+; Cancel rotation compensation as we use G53 on the probe move.
+; Leaving rotation compensation active causes us to fail position
+; checks.
+G69
 
 ; Get current machine position
 M5000 P0
@@ -126,9 +131,6 @@ while { true }
 
     ; Update the current position
     set var.cP = { global.mosMI }
-
-if { !exists(global.mosMI) }
-    global mosMI = { null }
 
 ; Save output variable
 set global.mosMI = { var.cP }
