@@ -653,7 +653,11 @@ if { var.wizFeatureTouchProbe && (var.wizTouchProbeID == null || var.wizTouchPro
         M291 P{"Measured block dimensions are <b>X=" ^ global.mosWPDims[move.workplaceNumber][0] ^ " Y=" ^ global.mosWPDims[move.workplaceNumber][1] ^ "</b>.<br/>Current probe location is over the center of the item."} R"MillenniumOS: Configuration Wizard" S2 T0
 
     var deflectionX = { (var.measuredX - global.mosWPDims[move.workplaceNumber][0])/2 }
+
     var deflectionY = { (var.measuredY - global.mosWPDims[move.workplaceNumber][1])/2 }
+
+    if { var.deflectionX < 0 || var.deflectionY < 0 }
+        abort { "MillenniumOS: One or more measured deflection values is negative! This is not possible and means you have triggered a bug."}
 
     ; Deflection values are stored separately per axis, as 3d touch probes almost
     ; always have different deflection values. These are applied during the

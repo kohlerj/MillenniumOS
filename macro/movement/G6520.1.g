@@ -22,13 +22,10 @@ if { exists(param.W) && param.W != null && (param.W < 0 || param.W >= limits.wor
 if { !exists(param.J) || !exists(param.K) || !exists(param.L) }
     abort { "Must provide a start position to probe from using J, K and L parameters!" }
 
-if { !exists(param.H) || !exists(param.I) }
-    abort { "Must provide an approximate X length and Y length using H and I parameters!" }
-
 if { !exists(param.P) }
     abort { "Must provide a probe depth below the top surface using the P parameter!" }
 
-if { (!exists(param.Q) || param.Q == 0) && !exists(param.H) || !exists(param.I) }
+if { (!exists(param.Q) || param.Q == 0) && (!exists(param.H) || !exists(param.I)) }
     abort { "Must provide an approximate X length and Y length using H and I parameters when using full probe, Q0!" }
 
 if { !exists(param.N) || param.N < 0 || param.N >= (#global.mosCornerNames) }
@@ -70,7 +67,7 @@ if { global.mosWPSfcPos[var.workOffset] == global.mosDfltWPSfcPos || global.mosW
 M5000 P1 I2
 
 ; Probe the corner surface
-G6508.1 R0 W{var.workOffset} Q{param.Q} H{param.H} I{param.I} N{param.N} T{param.T} C{param.C} O{param.O} J{param.J} K{param.K} L{ global.mosMI } Z{global.mosWPSfcPos[var.workOffset] - param.P }
+G6508.1 R0 W{var.workOffset} Q{param.Q} H{exists(param.H) ? param.H : null} I{exists(param.I) ? param.I : null} N{param.N} T{param.T} C{param.C} O{param.O} J{param.J} K{param.K} L{ global.mosMI } Z{global.mosWPSfcPos[var.workOffset] - param.P }
 if { global.mosWPCnrNum[var.workOffset] == null }
     abort { "G6520: Failed to probe the corner surface of the workpiece!" }
 

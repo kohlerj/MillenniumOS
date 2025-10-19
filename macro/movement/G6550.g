@@ -79,12 +79,6 @@ if { var.tPX == global.mosMI[0] && var.tPY == global.mosMI[1] && var.tPZ > var.c
     G53 G1 X{ var.tPX } Y{ var.tPY } Z{ var.tPZ } F{ sensors.probes[param.I].travelSpeed }
     M99
 
-; Note: these must be set as variables as we override the
-; probe speed below. We need to reset the probe speed
-; after the move.
-var roughSpeed   = { sensors.probes[param.I].speeds[0] }
-var fineSpeed    = { sensors.probes[param.I].speeds[1] }
-
 ; If the sensor is already triggered, we need to back-off slightly first
 ; before backing off the full distance while waiting for the sensor to
 ; trigger. When the sensor is _NOT_ triggered, it should read a value of
@@ -130,7 +124,7 @@ if { sensors.probes[param.I].value[0] != 0 }
         ; because it is still slightly in contact with the surface.
         ; It is better to just move the backoff distance and assume that it
         ; is short enough to not damage the probe.
-        G53 G1 X{ global.mosMI[0] + var.tDX } Y{ global.mosMI[1] + var.tDY } Z{ global.mosMI[2] + var.tDZ } F{ var.roughSpeed }
+        G53 G1 X{ global.mosMI[0] + var.tDX } Y{ global.mosMI[1] + var.tDY } Z{ global.mosMI[2] + var.tDZ } F{ sensors.probes[param.I].speeds[0] }
 
     ; Wait for moves to complete
     M400
@@ -148,10 +142,12 @@ M5000 P0
 ; Probing move either complete or stopped due to collision, we need to
 ; check the location of the machine to determine if the move was completed.
 
-; Reset probe speed
-M558 K{ param.I } F{ var.roughSpeed, var.fineSpeed }
-
+; Tolerance should be the maximum backlash value of the machine if that is
+; higher than the default tolerance.
 var tolerance = { 0.005 }
+
+while { iterations < #move.axes }
+    set var.tolerance = { max(var.tolerance, move.axes[iterations].backlash) }
 
 if { global.mosMI[0] < (var.tPX - var.tolerance) || global.mosMI[0] > (var.tPX + var.tolerance) }
     abort { "G6550: Machine position does not match expected position -  X=" ^ var.tPX ^ " != " ^ global.mosMI[0] }
