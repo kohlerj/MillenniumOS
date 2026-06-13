@@ -18,6 +18,15 @@ G0 X0 Y0
 
 G0 Z{ global.mosCL }
 
+var tmp = { global.mosCL - 10.0 }
+
+M291 P{"Move to Z=10 first?<br/>Click <b>Continue</b> if you are sure the tool is " ^ var.tmp ^ "mm above the origin, otherwise <b>Cancel</b>!" } R"MillenniumOS: Go to 10 above Zero" T0 S4 K{ "Continue", "Cancel" }
+if { input != 0 }
+    abort { "Operator aborted move to Z=0!" }
+
+; Move down to Z=10 at 10mm/s
+G1 Z10 F600
+
 M291 P{"Move to Z=0?<br/>Click <b>Continue</b> if you are sure the tool is " ^ global.mosCL ^ "mm above the origin, otherwise <b>Cancel</b>!" } R"MillenniumOS: Go to Zero" T0 S4 K{ "Continue", "Cancel" }
 if { input != 0 }
     abort { "Operator aborted move to Z=0!" }

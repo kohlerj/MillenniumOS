@@ -13,7 +13,7 @@ if { state.currentTool >= 0 && state.currentTool < limits.tools}
         ; Restore spindle speed from before the pause
         ; TODO: What about spindle direction?
 
-        ; Stop spindle and wait
+        ; Restart spindle and wait
         M98 P"M3.9.g" S{ tools[state.currentTool].spindleRpm }
 
 ; Move to X/Y position above the stored co-ordinates
